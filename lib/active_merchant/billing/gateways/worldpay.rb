@@ -237,12 +237,94 @@ module ActiveMerchant #:nodoc:
               add_sub_merchant_data(xml, options[:sub_merchant_data]) if options[:sub_merchant_data]
               add_hcg_additional_data(xml, options) if options[:hcg_additional_data]
               add_instalments_data(xml, options) if options[:instalments]
+              add_additional_data(xml, money, payment_method, options) if taxable?(options)
               add_moto_flag(xml, options) if options.dig(:metadata, :manual_entry)
               add_additional_3ds_data(xml, options) if options[:execute_threed] && options[:three_ds_version] && options[:three_ds_version] =~ /^2/
               add_3ds_exemption(xml, options) if options[:exemption_type]
             end
           end
         end
+      end
+
+      def add_additional_data(xml, amount, payment_method, options)
+        xml.branchSpecificExtension do
+          xml.purchase do
+            add_level_two_data(xml, amount, payment_method, options)
+            add_level_three_data(xml, amount, payment_method, options)
+          end
+        end
+      end
+
+      def add_level_two_data(xml, amount, payment_method, options)
+        xml.invoiceReferenceNumber options[:invoice_reference_number] if options[:invoice_reference_number]
+        xml.customerReference options[:customer_reference] if options[:customer_reference]
+        xml.cardAcceptorTaxId options[:card_acceptor_tax_id] if options[:card_acceptor_tax_id]
+        xml.salesTax do
+          add_amount(xml, options[:sales_tax][:amount].to_i, options[:sales_tax]) if options[:sales_tax]
+        end
+      end
+
+      def add_level_three_data(xml, amount, payment_method, options)
+        if options[:discount_amount]
+          xml.discountAmount do
+            add_amount(xml, options[:discount_amount][:amount].to_i, options[:discount_amount])
+          end
+        end
+        if options[:shipping_amount]
+          xml.shippingAmount do
+            add_amount(xml, options[:shipping_amount][:amount].to_i, options[:shipping_amount])
+          end
+        end
+        if options[:duty_amount]
+          xml.dutyAmount do
+            add_amount(xml, options[:duty_amount][:amount].to_i, options[:duty_amount])
+          end
+        end
+
+        if item = options[:item]
+          xml.item do
+            xml.description item[:description] if item[:description]
+            xml.productCode item[:product_code] if item[:product_code]
+            xml.commodityCode item[:commodity_code] if item[:commodity_code]
+            xml.quantity item[:quantity] if item[:quantity]
+
+            if item[:unit_cost]
+              xml.unitCost do
+                add_amount(xml, item[:unit_cost][:amount].to_i, item[:unit_cost])
+              end
+            end
+
+            xml.unitOfMeasure item[:unit_of_measure] if item[:unit_of_measure]
+
+            if item[:item_total]
+              xml.itemTotal do
+                add_amount(xml, item[:item_total][:amount].to_i, item[:item_total])
+              end
+            end
+
+            if item[:item_total_with_tax]
+              xml.itemTotalWithTax do
+                add_amount(xml, item[:item_total_with_tax][:amount].to_i, item[:item_total_with_tax])
+              end
+            end
+
+            if item[:item_discount_amount]
+              xml.itemDiscountAmount do
+                add_amount(xml, item[:item_discount_amount][:amount].to_i, item[:item_discount_amount])
+              end
+            end
+
+            if item[:tax_amount]
+              xml.taxAmount do
+                add_amount(xml, item[:tax_amount][:amount].to_i, item[:tax_amount])
+              end
+            end
+          end
+        end
+      end
+
+      def taxable?(options)
+        options.include?(:sales_tax) && options[:sales_tax] != 0
       end
 
       def order_tag_attributes(options)
